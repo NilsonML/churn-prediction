@@ -1,0 +1,173 @@
+# ============================================
+# PYTHON
+# ============================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+myenv/
+pyenv/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# ============================================
+# DATA FILES (ВАЖНО!)
+# ============================================
+
+# Сырые данные (никогда не пушим!)
+data/raw/
+data/processed/
+
+# Но можем сохранить пример данных
+!data/sample/
+
+# ============================================
+# MODELS (ВАЖНО!)
+# ============================================
+
+# Обученные модели (обычно > 100MB)
+models/*.pkl
+models/*.joblib
+models/*.h5
+models/*.pt
+models/*.pth
+models/*.onnx
+
+# Можно сохранить только метрики
+!models/*.csv
+!models/*.png
+
+# ============================================
+# IDE И РЕДАКТОРЫ
+# ============================================
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# ============================================
+# ОПЕРАЦИОННЫЕ СИСТЕМЫ
+# ============================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*.tmp
+
+# ============================================
+# ЛОГИ И ВРЕМЕННЫЕ ФАЙЛЫ
+# ============================================
+
+*.log
+*.tmp
+*.temp
+*.bak
+
+# ============================================
+# СЕКРЕТЫ И КОНФИГИ
+# ============================================
+
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.crt
+secrets.yaml
+config.local.py
+
+# ============================================
+# DOCKER
+# ============================================
+
+.dockerignore
+docker-compose.override.yml
+
+# ============================================
+# ДРУГОЕ
+# ============================================
+
+# Огромные файлы
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Дампы базы данных
+*.sql
+*.dump
+
+# Временные файлы pandas
+*.feather
+*.parquet
+*.hdf5

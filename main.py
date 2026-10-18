@@ -1,18 +1,12 @@
 """
 main.py - Главный скрипт для запуска всего пайплайна.
 Последовательность действий:
-1. Генерация данных (если нет)
-2. Feature Engineering
-3. Обучение моделей
-4. Оценка и сравнение
+1. Генерация данных и train/test split
+2. Обучение моделей (feature engineering — шаг внутри каждого пайплайна)
+3. Оценка и сравнение
 """
 
-import sys
-from pathlib import Path
 import argparse  # для парсинга аргументов командной строки
-
-# Добавляем src в путь
-sys.path.append(str(Path(__file__).parent))
 
 from src.data_processing import generate_synthetic_data, save_data, split_and_save_data
 from src.train import main as train_main

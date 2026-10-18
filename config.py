@@ -26,19 +26,7 @@ for dir_path in [RAW_DATA_DIR, PROCESSED_DATA_DIR, MODELS_DIR]:
 # Целевая переменная (что предсказываем)
 TARGET_COLUMN = "churn"
 
-# Категориальные признаки (нужны для One-Hot Encoding)
-CATEGORICAL_COLUMNS = ["payment_method", "contract_type"]
-
-# Числовые признаки (будем стандартизировать)
-NUMERICAL_COLUMNS = [
-    "tenure",
-    "monthly_charges",
-    "total_charges",
-    "num_services",
-    "has_internet",
-    "has_phone",
-    "age"
-]
+# Списки колонок для модели — в src/feature_engineering.get_feature_columns()
 
 # ========== ГИПЕРПАРАМЕТРЫ МОДЕЛЕЙ ==========
 # CatBoost
@@ -48,7 +36,8 @@ CATBOOST_PARAMS = {
     "depth": 6,
     "verbose" : 50,
     "random_seed" : 42,
-    "early_stopping_rounds" : 30
+    # early_stopping_rounds убран: без eval_set остановке не на что смотреть,
+    # параметр молча ничего не делал. Вернуть вместе с валидационной выборкой.
 }
 
 # LightGBM
@@ -66,7 +55,7 @@ XGBOOST_PARAMS = {
     "learning_rate": 0.05,
     "max_depth": 6,
     "random_state": 42,
-    "verbose": 0
+    "verbosity": 0,  # у XGBClassifier параметр называется verbosity, а не verbose
 }
 
 # ========== НАСТРОЙКИ ОБУЧЕНИЯ ==========

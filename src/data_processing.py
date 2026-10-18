@@ -10,11 +10,6 @@ data_processing.py - Отвечает за загрузку данных и их
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from pathlib import Path
-import sys
-
-# Добавляем путь к корневой папке для импорта config
-sys.path.append(str(Path(__file__).parent.parent))
 import config
 
 def generate_synthetic_data(n_samples: int = 100_000, random_state: int = 42) -> pd.DataFrame:

@@ -49,7 +49,9 @@ def create_features(df: pd.DataFrame) -> pd.DataFrame:
     df["is_senior"] = (df["age"] > 60).astype(int)
     
     # Средний возраст (30-60) - референсная группа
-    df["is_middle_age"] = ((df["age"]) & (df["age"] <= 60)).astype(int)
+    # Было: (df["age"]) & (df["age"] <= 60) — побитовое И числа с bool,
+    # то есть по сути age & 1: флаг означал "нечётный возраст до 60".
+    df["is_middle_age"] = ((df["age"] >= 30) & (df["age"] <= 60)).astype(int)
     
     # ========== 3. БИНАРНЫЕ ФЛАГИ ==========
     # Клиенты с высокими платежами (топ 25%)

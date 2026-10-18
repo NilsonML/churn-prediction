@@ -1,72 +1,57 @@
 """
-main.py - Главный скрипт для запуска всего пайплайна.
-Последовательность действий:
-1. Генерация данных (если нет)
-2. Feature Engineering
-3. Обучение моделей
-4. Оценка и сравнение
+main.py - Точка входа: генерация данных -> кросс-валидация и обучение -> оценка на test.
+
+Использование:
+    python main.py                       # весь пайплайн
+    python main.py --generate            # только сгенерировать и разбить данные
+    python main.py --train --evaluate    # обучить и оценить
+    python main.py --models logreg hist_gb --n-samples 20000 --folds 3   # быстрый прогон
 """
 
-import sys
-from pathlib import Path
-import argparse  # для парсинга аргументов командной строки
+import argparse
 
-# Добавляем src в путь
-sys.path.append(str(Path(__file__).parent))
-
+import config
 from src.data_processing import generate_synthetic_data, save_data, split_and_save_data
-from src.train import main as train_main
 from src.evaluate import evaluate_all
+from src.models import MODEL_BUILDERS
+from src.train import main as train_main
 
-def main():
-    """
-    Основной пайплайн обучения и оценки моделей.
-    
-    Использование:
-        python main.py --generate  # только сгенерировать данные
-        python main.py --train     # только обучить модели
-        python main.py --evaluate  # только оценить
-        python main.py --all       # сделать всё
-    """
-    # Парсим аргументы командной строки
-    parser = argparse.ArgumentParser(description='Churn Prediction Pipeline')
-    parser.add_argument('--generate', action='store_true', help='Generate data')
-    parser.add_argument('--train', action='store_true', help='Train models')
-    parser.add_argument('--evaluate', action='store_true', help='Evaluate models')
-    parser.add_argument('--all', action='store_true', help='Run full pipeline')
-    
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Churn prediction pipeline")
+    parser.add_argument("--generate", action="store_true", help="сгенерировать и разбить данные")
+    parser.add_argument("--train", action="store_true", help="кросс-валидация и обучение")
+    parser.add_argument("--evaluate", action="store_true", help="оценка на test")
+    parser.add_argument("--all", action="store_true", help="все шаги (по умолчанию)")
+    parser.add_argument("--n-samples", type=int, default=config.N_SAMPLES)
+    parser.add_argument("--folds", type=int, default=config.CV_FOLDS)
+    parser.add_argument(
+        "--models", nargs="+", choices=list(MODEL_BUILDERS), help="какие модели обучать"
+    )
     args = parser.parse_args()
-    
-    # Если ничего не указано - запускаем всё
-    if not any([args.generate, args.train, args.evaluate, args.all]):
+    if not any([args.generate, args.train, args.evaluate]):
         args.all = True
-    
-    print("\n" + "="*60)
-    print("🏠 CHURN PREDICTION PIPELINE")
-    print("="*60)
-    
-    # Шаг 1: Генерация данных
+    return args
+
+
+def main() -> None:
+    args = parse_args()
+    config.ensure_dirs()
+
     if args.generate or args.all:
-        print("\n📊 ШАГ 1: Генерация данных")
-        df = generate_synthetic_data(n_samples=100_000)
+        print("\n=== 1. Генерация данных ===")
+        df = generate_synthetic_data(n_samples=args.n_samples, random_state=config.RANDOM_STATE)
         save_data(df, "churn.csv")
         split_and_save_data(df)
-    
-    # Шаг 2: Обучение моделей
+
     if args.train or args.all:
-        print("\n" + "="*60)
-        print("🤖 ШАГ 2: Обучение моделей")
-        train_main()
-    
-    # Шаг 3: Оценка
+        print("\n=== 2. Кросс-валидация и обучение ===")
+        train_main(model_names=args.models, n_folds=args.folds)
+
     if args.evaluate or args.all:
-        print("\n" + "="*60)
-        print("📊 ШАГ 3: Оценка моделей")
+        print("\n=== 3. Оценка на test ===")
         evaluate_all()
-    
-    print("\n" + "="*60)
-    print("✅ ПАЙПЛАЙН ЗАВЕРШЕН!")
-    print("="*60)
+
 
 if __name__ == "__main__":
     main()

@@ -101,7 +101,9 @@ def explain_with_shap(model, X_test: pd.DataFrame, name: str, n_samples: int = 1
         feature_names = model[:-1].get_feature_names_out()
         X_transformed = pd.DataFrame(X_transformed, columns=feature_names)
 
-        explainer = shap.TreeExplainer(model[-1])
+        # Для CatBoostNative объясняем саму модель CatBoost внутри обёртки
+        classifier = getattr(model[-1], "model_", model[-1])
+        explainer = shap.TreeExplainer(classifier)
         shap_values = explainer.shap_values(X_transformed)
         shap.summary_plot(shap_values, X_transformed, show=False, max_display=15)
         plt.title(f"SHAP: {name}")

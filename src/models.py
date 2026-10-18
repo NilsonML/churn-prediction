@@ -18,6 +18,7 @@ models.py - Все модели проекта как sklearn-пайплайны
 
 from collections.abc import Callable
 
+from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
@@ -101,8 +102,38 @@ def _xgboost() -> Pipeline:
     )
 
 
+class CatBoostNative(ClassifierMixin, BaseEstimator):
+    """Обёртка над CatBoostClassifier с родной обработкой категорий.
+
+    Зачем обёртка: cross_validate клонирует модель через sklearn.clone(), а clone
+    проверяет, что конструктор сохраняет параметры без изменений. CatBoost копирует
+    список cat_features внутри, и clone падает с "Cannot clone object ... cat_features"
+    (нашёл CI). Здесь параметры хранятся как есть, а CatBoost создаётся в fit().
+    """
+
+    def __init__(self, cat_features: tuple[str, ...] = (), params: dict | None = None):
+        self.cat_features = cat_features
+        self.params = params
+
+    def fit(self, X, y):
+        import catboost as cb
+
+        self.model_ = cb.CatBoostClassifier(
+            cat_features=list(self.cat_features), **(self.params or {})
+        )
+        self.model_.fit(X, y)
+        self.classes_ = self.model_.classes_
+        return self
+
+    def predict_proba(self, X):
+        return self.model_.predict_proba(X)
+
+    def predict(self, X):
+        return self.model_.predict(X)
+
+
 def _catboost() -> Pipeline:
-    import catboost as cb
+    import catboost  # noqa: F401  проверяем наличие библиотеки сразу, а не в fit
 
     # Без one-hot: главное преимущество CatBoost — собственная обработка категорий
     # (ordered target statistics). Первая версия подавала ему уже закодированные
@@ -112,7 +143,9 @@ def _catboost() -> Pipeline:
             ("features", ChurnFeatures()),
             (
                 "classifier",
-                cb.CatBoostClassifier(cat_features=CATEGORICAL_FEATURES, **config.CATBOOST_PARAMS),
+                CatBoostNative(
+                    cat_features=tuple(CATEGORICAL_FEATURES), params=config.CATBOOST_PARAMS
+                ),
             ),
         ]
     )

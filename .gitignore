@@ -171,3 +171,8 @@ docker-compose.override.yml
 *.feather
 *.parquet
 *.hdf5
+# Логи обучения CatBoost (создаются автоматически при каждом fit)
+catboost_info/
+
+# Сгенерированные данные: воспроизводятся командой `python main.py --generate`
+data/*.csv

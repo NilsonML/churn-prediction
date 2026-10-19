@@ -1,135 +1,92 @@
 """
 feature_engineering.py - Создание новых признаков из существующих.
-Это один из самых важных этапов в ML - качественные признаки дают 
-больше, чем сложная модель.
+
+Признаки оформлены как sklearn-трансформер (fit / transform), а не как функция.
+Почему это важно:
+  Часть признаков зависит от статистик данных, например порог "дорогой тариф" =
+  75-й перцентиль платежа. Первая версия считала этот перцентиль заново на каждом
+  наборе: на train по train, на test по test. Это две ошибки сразу:
+    1) утечка: статистика тестовых данных влияет на их же признаки;
+    2) нестабильность: в проде новые данные приходят по одному клиенту, и
+       "перцентиль от одной строки" бессмыслен.
+  Трансформер запоминает пороги в fit() на train и применяет их в transform().
+  Внутри sklearn Pipeline это происходит автоматически, в том числе в каждом фолде
+  кросс-валидации.
 """
 
-import pandas as pd
 import numpy as np
-from pathlib import Path
-import sys
+import pandas as pd
+from sklearn.base import BaseEstimator, TransformerMixin
 
-sys.path.append(str(Path(__file__).parent.parent))
 import config
 
-def create_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Создает новые признаки на основе существующих.
-    
-    Аргументы:
-        df: DataFrame с исходными признаками
-    
-    Возвращает:
-        DataFrame с добавленными признаками
-    
-    Логика создания признаков:
-        1. Финансовые метрики
-        2. Демографические группы
-        3. Взаимодействия признаков
-        4. Бинарные флаги для крайних значений
-    """
-    print("\n🔧 Создаем новые признаки...")
-    df = df.copy()  # чтобы не менять оригинал
-    
-    # ========== 1. ФИНАНСОВЫЕ МЕТРИКИ ==========
-    # Среднемесячный платеж за всё время
-    # total_charges / tenure - показывает, сколько в среднем платит клиент
-    # Если tenure = 0 (не бывает, т.к. у нас от 1), но на всякий случай
-    df["avg_monthly_charge"] = df["total_charges"] / df["tenure"].clip(lower=1)
-    
-    # Отношение текущего платежа к среднему
-    # > 1 значит, что платеж вырос, < 1 - упал
-    df["charge_ratio"] = df["monthly_charges"] / df["avg_monthly_charge"]
-    
-    # ========== 2. ДЕМОГРАФИЧЕСКИЕ ГРУППЫ ==========
-    # Молодые клиенты (до 30) часто более мобильны
-    df["is_young"] = (df["age"] < 30).astype(int)
-    
-    # Пожилые клиенты (60+) часто более лояльны
-    df["is_senior"] = (df["age"] > 60).astype(int)
-    
-    # Средний возраст (30-60) - референсная группа
-    # Было: (df["age"]) & (df["age"] <= 60) — побитовое И числа с bool,
-    # то есть по сути age & 1: флаг означал "нечётный возраст до 60".
-    df["is_middle_age"] = ((df["age"] >= 30) & (df["age"] <= 60)).astype(int)
-    
-    # ========== 3. БИНАРНЫЕ ФЛАГИ ==========
-    # Клиенты с высокими платежами (топ 25%)
-    high_charge_threshold = df["monthly_charges"].quantile(0.75)
-    df["high_charges"] = (df["monthly_charges"] > high_charge_threshold).astype(int)
-    
-    # Долгоживущие клиенты (топ 25% по стажу)
-    long_tenure_threshold = df["tenure"].quantile(0.75)
-    df["long_tenure"] = (df["tenure"] > long_tenure_threshold).astype(int)
-    
-    # ========== 4. ВЗАИМОДЕЙСТВИЯ ПРИЗНАКОВ ==========
-    # Клиенты с интернетом и высокими платежами
-    df["internet_high_charge"] = (df["has_internet"] & df["high_charges"]).astype(int)
-    
-    # Молодые с помесячным контрактом (рискованная группа)
-    df["young_monthly"] = (df["is_young"] &
-                           (df["contract_type"] == "month-to-month")).astype(int)
-    
-    # ========== 5. КАТЕГОРИАЛЬНЫЕ ПРИЗНАКИ (преобразуем для моделей) ==========
-    # Некоторые модели (LightGBM, XGBoost) лучше работают с категориальными
-    # кодированными как числа, поэтому создаем числовые версии
-    
-    # Contract type: month-to-month = 0, one_year = 1, two_year = 2
-    contract_map = {"month-to-month": 0, "one_year": 1, "two_year": 2}
-    df["contract_type_num"] = df["contract_type"].map(contract_map)
-    
-    # Payment method: банк = 0, кредитка = 1, PayPal = 2, чек = 3
-    payment_map = {"bank_transfer": 0, "credit_card": 1, "paypal": 2, "check": 3}
-    df["payment_method_num"] = df["payment_method"].map(payment_map)
-    
-    print(f"✅ Добавлено {df.shape[1] - 8} новых признаков")
-    print(f"📊 Общее количество признаков: {df.shape[1]}")
-    
-    return df
+# Признаки, которые создаёт трансформер, по типам (нужны для предобработки в models.py)
+NEW_NUMERICAL = ["avg_monthly_charge", "charge_ratio"]
+NEW_BINARY = [
+    "is_young",
+    "is_middle_age",
+    "is_senior",
+    "high_charges",
+    "long_tenure",
+    "internet_high_charge",
+    "young_monthly",
+]
 
-def get_feature_columns(df: pd.DataFrame) -> dict:
+NUMERICAL_FEATURES = config.NUMERICAL_COLUMNS + NEW_NUMERICAL
+BINARY_FEATURES = config.BINARY_COLUMNS + NEW_BINARY
+CATEGORICAL_FEATURES = config.CATEGORICAL_COLUMNS
+
+
+class ChurnFeatures(BaseEstimator, TransformerMixin):
+    """Добавляет финансовые метрики, демографические группы и взаимодействия признаков.
+
+    Параметры:
+        high_quantile: перцентиль, выше которого платёж/стаж считается "высоким".
     """
-    Определяет типы колонок после feature engineering.
-    
-    Аргументы:
-        df: DataFrame с признаками
-    
-    Возвращает:
-        dict с категориями колонок
-    """
-    # Все колонки кроме целевой
-    all_columns = [col for col in df.columns if col != config.TARGET_COLUMN]
-    
-    # Категориальные колонки (включая новые)
-    categorical = [
-        "payment_method", 
-        "contract_type",
-        "is_young",
-        "is_senior", 
-        "is_middle_age",
-        "high_charges",
-        "long_tenure",
-        "internet_high_charge",
-        "young_monthly"
-    ]
-    
-    # Числовые колонки
-    numerical = [
-        "tenure", 
-        "monthly_charges", 
-        "total_charges", 
-        "num_services",
-        "has_internet",
-        "has_phone",
-        "age",
-        "avg_monthly_charge",
-        "charge_ratio",
-        "contract_type_num",
-        "payment_method_num"
-    ]
-    
-    return {
-        "all": all_columns,
-        "categorical": [col for col in categorical if col in df.columns],
-        "numerical": [col for col in numerical if col in df.columns]
-    }
+
+    def __init__(self, high_quantile: float = 0.75):
+        # По соглашению sklearn в __init__ только сохраняем параметры, без вычислений:
+        # на этом построены clone(), GridSearchCV и get_params().
+        self.high_quantile = high_quantile
+
+    def fit(self, X: pd.DataFrame, y=None):
+        # Атрибуты, выученные из данных, по соглашению sklearn оканчиваются на "_"
+        self.high_charge_threshold_ = X["monthly_charges"].quantile(self.high_quantile)
+        self.long_tenure_threshold_ = X["tenure"].quantile(self.high_quantile)
+        self.feature_names_in_ = np.asarray(X.columns, dtype=object)
+        return self
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        df = X.copy()  # не меняем входные данные
+
+        # ========== 1. ФИНАНСОВЫЕ МЕТРИКИ ==========
+        # Средний платёж за всё время (clip защищает от деления на 0 при tenure=0)
+        df["avg_monthly_charge"] = df["total_charges"] / df["tenure"].clip(lower=1)
+        # Текущий платёж / средний: > 1 означает, что тариф подорожал
+        df["charge_ratio"] = df["monthly_charges"] / df["avg_monthly_charge"]
+
+        # ========== 2. ДЕМОГРАФИЧЕСКИЕ ГРУППЫ (не пересекаются) ==========
+        df["is_young"] = (df["age"] < 30).astype(int)
+        df["is_middle_age"] = ((df["age"] >= 30) & (df["age"] <= 60)).astype(int)
+        df["is_senior"] = (df["age"] > 60).astype(int)
+
+        # ========== 3. ФЛАГИ ПО ПОРОГАМ, ВЫУЧЕННЫМ НА TRAIN ==========
+        df["high_charges"] = (df["monthly_charges"] > self.high_charge_threshold_).astype(int)
+        df["long_tenure"] = (df["tenure"] > self.long_tenure_threshold_).astype(int)
+
+        # ========== 4. ВЗАИМОДЕЙСТВИЯ ==========
+        df["internet_high_charge"] = (df["has_internet"] & df["high_charges"]).astype(int)
+        df["young_monthly"] = (df["is_young"] & (df["contract_type"] == "month-to-month")).astype(
+            int
+        )
+
+        # Убраны contract_type_num и payment_method_num из первой версии.
+        # payment_method — номинальный признак: кодировка банк=0, карта=1, PayPal=2,
+        # чек=3 придумывает несуществующий порядок ("чек больше банка"), а после
+        # StandardScaler линейная модель воспринимает его как число. Оба признака к
+        # тому же дублировали one-hot-кодирование тех же колонок.
+        return df
+
+    def get_feature_names_out(self, input_features=None) -> np.ndarray:
+        """Нужно, чтобы Pipeline и ColumnTransformer знали имена колонок на выходе."""
+        return np.asarray(list(self.feature_names_in_) + NEW_NUMERICAL + NEW_BINARY, dtype=object)
